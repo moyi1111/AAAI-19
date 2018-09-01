@@ -1,0 +1,130 @@
+function [C,Energy]=message_passing_fast2(A,Aij,nn,pairterm,K,dumping_rate,tmax,small,threshold,beta,groundturth)
+
+topo = load('DATA/texas_n.mat');
+topo = topo.G;
+attr = load('DATA/texas_wd');
+attr = full(attr.texas_wd)
+load DATA/texas_wd  
+ALPHA = 1e-2;
+BETA = 1e-2;
+%    N = 1;     %%%%%%% ������ԭ����500   ������ŵ�ѭ���ÿ��ȡ���µ����
+M = 1;     %%%%%����������������
+SEED = 1;    %������������������
+OUTPUT = 1;
+J = 5;     %���Ÿ����������ԭ����?0
+
+
+C=zeros(nn,1);%�����洢ÿ���������Ż��ֽ��?
+N=1;
+[phi, theta, mu] = csh(texas_wd, J, N, ALPHA, BETA, SEED, OUTPUT);
+banlance = norm();
+%theta = zeros(K,nn);%�������theta����Ϣ��%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Belief=zeros(nn,K);
+
+
+%��ʼ������message
+%ÿһ��������������������������н�㷢��Ϣ
+mss=rand(nn,nn,K);%���һ��λ�ñ�ʶԪ������?
+mss=max(mss,small);%�����?ȡ�����������?ÿһ��ڲ����������small֮��ȡ����Ǹ�?
+mss=log(mss);
+minmss=min(mss,[],3);%  k���ڸ���״̬�µ���СͶӰ����
+minmss=repmat(minmss,[1,1,K]);
+mss=mss-minmss;%ÿһ��״̬��ÿһ�����ϵ�mess����ȥ��Сֵ��
+
+mssnew=mss;%�첽����ʱ�洢�¸��µ�message
+
+
+%ͬ�����£���dumping_rateϵ��ӽ�ȥ��?��ͬ��������message�ĸ���˳���޹�)
+t=1; %%%%%%%%%%%MRF�ĵ���?
+ST=true;
+potential=zeros(nn,nn,K);
+while (t<tmax)&&(ST==true)
+   
+               for k=1:K%�˴�kΪc_i
+                   potential=repmat(pairterm,[1,1,K]);%��potential��ÿһά��ֵ��pairterm
+                   potential(:,:,k)=-pairterm;%��������ά�������Ǹ�ֵ��
+                   potential=beta*max(potential,small)+mss;
+                   mama=max(potential,[],3);%�����Ѿ�ȡ�����һ���ˣ�?
+                   %���ﵽ�˼Ӻ���Ϣ�Ĳ����ˣ�����������ϲ����Ϣ������������������������������������������������
+                   
+                   %��һ������һ����ʼ��theta������ÿ�����������theta
+                   
+                  a=sum(mama);
+                  b=theta(k,:);
+                   smama=sum(mama)  +    banlance * theta(k,:)    ;%���мӺͣ������i����j����Ϣ�������е�k��i����ĺͣ������������мӺͣ�����?
+                                                    %�������´�
+                   
+                   %����õ��µ�theta �����������費��Ҫ��һ�������������棿����������������������������
+                   N = t+10
+                   [phi, theta, mu] = sBPtrain_down(texas_wd, J, Belief, ALPHA, BETA, SEED, OUTPUT,mu);%%%LDA����
+                   
+                   
+                   %������ݼ�����ȷ���ĵ���ĿD�ͽ����Ŀ��ƥ�䣡��������������?                               
+                   
+                   
+                   smatrix=repmat(smama,[nn,1]);%!!!���Խ����ϵ����㣻�������ÿһ�ж���ֵ��������smama
+                   mmatrix=smatrix-mama;
+                   for i=1:nn
+                       mmatrix(i,i)=0;
+                   end
+                   mssnew(:,:,k)=mmatrix';
+               end%END-(for k=1:K)���i��j�������Ҫ�����i��j�ڵ�k��״̬��message
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+               %K�ֿ���ȡֵ��׼��
+               %Ҳ���Գ����ȼ�ȥ���ֵ��ָ���ȥ��׼��
+               minmss=min(mssnew,[],3);
+               minmss=repmat(minmss,[1,1,K]);
+               mssnew=mssnew-minmss;
+               mssnew=dumping_rate*mssnew+(1-dumping_rate)*mss;
+
+               Belief=zeros(nn,K);
+                    for k=1:K %c_iȡK����ͬ��ֵ
+                        potential=repmat(pairterm,[1,1,K]);%��potential��ÿһά��ֵ��pairterm
+                        potential(:,:,k)=-pairterm;
+                        potential=beta*max(potential,small)+mss;
+                        mama=max(potential,[],3);%�൱��ʵ�ֱ�Ե��c_k
+                            for i=1:nn
+                                 mama(i,i)=0;
+                            end
+                        smama=sum(mama);
+                        Belief(:,k)=smama';
+                    end%END-( for k=1:K)
+               
+               
+    t=t+1;
+    mss_diff=abs(mssnew-mss);
+    mss_dmax=max(max(max(mss_diff)));%???���￼�����ǻ��ɲ���ͣ�?
+    mss=mssnew;%����message��������һ����
+    if (mss_dmax<threshold)
+        ST=false;
+    end
+end%END-(while (t<tmax)&&(ST==true))
+
+
+%����ÿ������Beliefȷ�������������?
+Belief=zeros(nn,K);
+     for k=1:K %c_iȡK����ͬ��ֵ
+         potential=repmat(pairterm,[1,1,K]);%��potential��ÿһά��ֵ��pairterm
+         potential(:,:,k)=-pairterm;
+         potential=beta*max(potential,small)+mss;
+         mama=max(potential,[],3);%�൱��ʵ�ֱ�Ե��c_k
+         for i=1:nn
+             mama(i,i)=0;
+         end
+         smama=sum(mama);
+         Belief(:,k)=smama';
+    end%END-( for k=1:K)
+    %��belief���Ҹ���������Ϊ���Ż��ֽ��?
+    [Mval,C]=max(Belief,[],2);%��������˽������ӳ�䵽1..nn�Ľ���ǩ��ע��
+
+
+%������ֻ���ʱ��energy
+Ccol=repmat(C,[1,nn]);
+Crow=repmat(C',[nn,1]);
+Ctarget=Ccol==Crow;
+Ctarget=(-1).^Ctarget;
+for i=1:nn
+    Ctarget(i,i)=0;
+end
+Menergy=beta*(Ctarget.*pairterm);
+Energy=sum(sum(Menergy));    
